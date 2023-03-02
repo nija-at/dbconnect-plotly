@@ -9,7 +9,7 @@ If you don't have this, contact the authors - https://databricks.atlassian.net/w
 
 ## Running the app
 
-Setup and activate a Conda environment.
+Create and activate a Conda environment.
 
 ```shell
 conda env create -f ./conda.yml
