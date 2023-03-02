@@ -7,7 +7,25 @@ Demonstration of using Databricks Connect V2 on Plotly.
 You need to have the latest DB Connect Python tar file to run the application.
 If you don't have this, contact the authors - https://databricks.atlassian.net/wiki/spaces/UN/pages/2977858055/
 
-## Running the app
+## Set up Cluster and credentials
+
+Create a cluster that has the Spark Connect running.
+
+Generate a PAT token from the Databricks workspace.
+
+Create a `cluster.json` file using the following command with the placeholder values filled in.
+
+```shell
+cat << EOF > cluster.json
+{
+  "workspaceUrl": "<workspace url>",
+  "clusterId": "<cluster id>",
+  "token": "<pat token>"
+}
+EOF
+```
+
+## Run the app
 
 Create and activate a Conda environment.
 

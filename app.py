@@ -5,13 +5,17 @@ from pyspark.sql.session import SparkSession
 from pyspark.sql.functions import col
 from pyspark.sql.types import StringType
 
+import json
 
 def spark_session():
-    host = "<databricks workspace url>"
-    clusterId = "<cluster id>"
-    pat = "<token>"
+    with open("cluster.json") as f:
+        config = json.load(f)
 
-    connStr = f"sc://{host}:443/;token={pat};x-databricks-cluster-id={clusterId}"
+    host = config["workspaceUrl"]
+    clusterId = config["clusterId"]
+    token = config["token"]
+
+    connStr = f"sc://{host}:443/;token={token};x-databricks-cluster-id={clusterId}"
 
     return SparkSession.builder.remote(connStr).getOrCreate()
 
