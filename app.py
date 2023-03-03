@@ -20,14 +20,7 @@ def spark_session():
     return SparkSession.builder.remote(connStr).getOrCreate()
 
 
-def pickupzip_sample(spark: SparkSession):
-    df = spark.read.table("samples.nyctaxi.trips")
-    df = df.withColumn("pickup_zip", col("pickup_zip").cast(StringType()))
-    return df.groupby("pickup_zip").count().limit(30)
-
-
 spark = spark_session()
-sample = pickupzip_sample(spark).toPandas()
 
 app = Dash(__name__)
 
