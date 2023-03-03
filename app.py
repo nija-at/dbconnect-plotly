@@ -69,8 +69,23 @@ def update_trip_count(greaterThan):
     Output("estimated-time", "children"),
     Input("trip-distance", "value")
 )
+
 def predict_time(distance):
-    return distance * 2
+    with open("cluster.json") as f:
+        config = json.load(f)
+        host = config["workspaceUrl"]
+        token = config["token"]
+    import os
+    os.environ["DATABRICKS_TOKEN"] = token
+    os.environ["DATABRICKS_HOST"] = f"https://{host}"
+    os.environ["MLFLOW_TRACKING_URI"] = "databricks"
+    import mlflow
+    import pandas as pd
+    model_name = "NYTaxi_duration"
+    X = pd.DataFrame([distance], columns = ['trip_distance'])
+    model = mlflow.pyfunc.load_model(f"models:/{model_name}/production")
+    pred = model.predict(X)
+    return pred[0]
 
 
 if __name__ == "__main__":
