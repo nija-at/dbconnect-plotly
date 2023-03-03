@@ -35,6 +35,19 @@ app.layout = html.Div(children=[
         ]),
         dcc.Graph(id="postcode-trip-count")
     ]),
+
+    html.Div([
+        html.H2("Predicting fare and trip time"),
+        html.Span([
+            "Distance: ",
+            dcc.Input(id="trip-distance", value="", type="number")
+        ]),
+        html.Br(),
+        html.Span([
+            "Estimated Time: ",
+            html.Span(id="estimated-time")
+        ])
+    ])
 ])
 
 
@@ -50,6 +63,14 @@ def update_trip_count(greaterThan):
     df = df.filter(col("count") >= int(greaterThan))
 
     return px.scatter(df.toPandas(), x="pickup_zip", y="dropoff_zip", size="count", height=1000, width=1000)
+
+
+@app.callback(
+    Output("estimated-time", "children"),
+    Input("trip-distance", "value")
+)
+def predict_time(distance):
+    return distance * 2
 
 
 if __name__ == "__main__":
