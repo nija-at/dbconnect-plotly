@@ -29,7 +29,7 @@ spark = spark_session()
 app = Dash(__name__)
 
 app.layout = html.Div(children=[
-    html.H1(children="Dash x Databricks Demo"),
+    html.H1(children="NYC Taxi Cockpit: Plotly x Databricks Demo"),
 
     html.Div([
         html.H2("Predicting fare and trip time with a Machine Learning Model (on Databricks)"),
@@ -104,24 +104,45 @@ def update_trip_count(greaterThan):
 )
 
 def predict_time(distance):
+    import os
+    import requests
+    import numpy as np
+    import json
+    import mlflow
+    import pandas as pd
     with open("cluster.json") as f:
         config = json.load(f)
         host = config["workspaceUrl"]
         token = config["token"]
-    import os
+
     os.environ["DATABRICKS_TOKEN"] = token
     os.environ["DATABRICKS_HOST"] = f"https://{host}"
     os.environ["MLFLOW_TRACKING_URI"] = "databricks"
-    import mlflow
-    import pandas as pd
+
+    # prediction model loading model from ml flow
     model_name = "NYTaxi_duration"
     X = pd.DataFrame([distance], columns = ['trip_distance'])
     model = mlflow.pyfunc.load_model(f"models:/{model_name}/production")
     pred1 = model.predict(X)
-    model_name = "NYTaxi_fare_amount"
-    X = pd.DataFrame([distance], columns = ['trip_distance'])
-    model = mlflow.pyfunc.load_model(f"models:/{model_name}/production")
-    pred2 = model.predict(X)
+    # model_name = "NYTaxi_fare_amount"
+    # X = pd.DataFrame([distance], columns = ['trip_distance'])
+    # model = mlflow.pyfunc.load_model(f"models:/{model_name}/production")
+    # pred2 = model.predict(X)
+
+    # -- prediction model through Ml Databricks serving
+    def create_tf_serving_json(data):
+        return {'inputs': {name: data[name].tolist() for name in data.keys()} if isinstance(data, dict) else data.tolist()}
+
+    def score_model(dataset):
+        url = 'https://e2-dogfood.staging.cloud.databricks.com/serving-endpoints/NYCTaxi_fare_amount/invocations'
+        headers = {'Authorization': f'Bearer {os.environ.get("DATABRICKS_TOKEN")}', 'Content-Type': 'application/json'}
+        ds_dict = {'dataframe_split': dataset.to_dict(orient='split')} if isinstance(dataset, pd.DataFrame) else create_tf_serving_json(dataset)
+        data_json = json.dumps(ds_dict, allow_nan=True)
+        response = requests.request(method='POST', headers=headers, url=url, data=data_json)
+        if response.status_code != 200:
+            raise Exception(f'Request failed with status {response.status_code}, {response.text}')
+        return response.json()
+    pred2 = score_model(X)["predictions"]
 
     return [pred1[0], pred2[0]]
 
@@ -172,33 +193,36 @@ def update_output(zip_plot, column_map_show):
     
 )
 def update_output(n_clicks,pickup_zip,dropoff_zip,trip_distance,trip_duration,fare_amount):
-    df = spark.read.table("hive_metastore.da_vladislav_manticlugo_8874_asp.nyctaxi_data")
-    schema = T.StructType([ \
-    T.StructField("trip_distance",T.DoubleType(),True), \
-    T.StructField("fare_amount",T.DoubleType(),True), \
-    T.StructField("pickup_zip",T.IntegerType(),True), \
-    T.StructField("dropoff_zip", T.IntegerType(), True), \
-    T.StructField("trip_duration", T.DoubleType(), True),\
-    ])
+    if trip_distance is None or fare_amount is None or pickup_zip is None or dropoff_zip is None or trip_duration is None:
+        dashboard =  " "
+    else:
+        df = spark.read.table("hive_metastore.da_vladislav_manticlugo_8874_asp.nyctaxi_data")
+        schema = T.StructType([ \
+        T.StructField("trip_distance",T.DoubleType(),True), \
+        T.StructField("fare_amount",T.DoubleType(),True), \
+        T.StructField("pickup_zip",T.IntegerType(),True), \
+        T.StructField("dropoff_zip", T.IntegerType(), True), \
+        T.StructField("trip_duration", T.DoubleType(), True),\
+        ])
 
-    df_row_data = ([[
-    float(trip_distance),
-    float(fare_amount),
-    int(pickup_zip),
-    int(dropoff_zip),
-    float(trip_duration)
-    ]])
-    df_row_data
-    df2 = (spark.createDataFrame(data = df_row_data,schema = schema)
-    .withColumn('tpep_pickup_datetime',F.current_timestamp())
-    .withColumn('tpep_dropoff_datetime',F.to_timestamp(F.from_unixtime(F.unix_timestamp(F.current_timestamp())+trip_duration*60)))
-    )
-    df2 = df2.select(df.columns)
-    df2 = df.union(df2)
-    # df2.write.saveAsTable("hive_metastore.da_vladislav_manticlugo_8874_asp.nyctaxi_data", mode='overwrite', format='delta') 
-    # #Db connect error on grpc needs to be solved before writing to tables
+        df_row_data = ([[
+        float(trip_distance),
+        float(fare_amount),
+        int(pickup_zip),
+        int(dropoff_zip),
+        float(trip_duration)
+        ]])
+        df_row_data
+        df2 = (spark.createDataFrame(data = df_row_data,schema = schema)
+        .withColumn('tpep_pickup_datetime',F.current_timestamp())
+        .withColumn('tpep_dropoff_datetime',F.to_timestamp(F.from_unixtime(F.unix_timestamp(F.current_timestamp())+trip_duration*60)))
+        )
+        df2 = df2.select(df.columns)
+        df2 = df.union(df2)
+        df2.write.saveAsTable("hive_metastore.da_vladislav_manticlugo_8874_asp.nyctaxi_data", mode='overwrite', format='delta') 
+        # #NEW Db connect v2 error on grpc needs to be solved before writing to tables starts working again -- comment previous line for display of input variables
 
-    return (f"The submitted value to database are: \n"
+    dashboard = (f"The submitted value to database are: \n"
             f"pickup_zip = {pickup_zip},"  
             f"dropoff_zip = {dropoff_zip},"  
             f"dropoff_zip = {dropoff_zip},"  
@@ -206,6 +230,7 @@ def update_output(n_clicks,pickup_zip,dropoff_zip,trip_distance,trip_duration,fa
             f"trip_duration = {trip_duration},"
             f"fare_amount = {fare_amount},"
             f"-> Submitted={n_clicks}")
+    return dashboard
 
 
 if __name__ == "__main__":
